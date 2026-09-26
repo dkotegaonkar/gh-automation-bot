@@ -65,6 +65,20 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@v4
+      # Port 22 is closed to the internet. The github-deploy IAM user may only add/remove ingress rules
+      # on this instance's security group: open 22 for this runner's IP, deploy, always close it again.
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+      - name: Open temporary SSH window for this runner
+        id: sshwin
+        run: |
+          IP=$(curl -fsS https://checkip.amazonaws.com)
+          aws ec2 authorize-security-group-ingress --group-id "${{ vars.EC2_SECURITY_GROUP_ID }}" \
+            --ip-permissions "IpProtocol=tcp,FromPort=22,ToPort=22,IpRanges=[{CidrIp=${IP}/32,Description=gh-actions-run-${{ github.run_id }}}]"
+          echo "ip=${IP}" >> "$GITHUB_OUTPUT"
       - name: Configure SSH
         run: |
           install -m 700 -d ~/.ssh
@@ -92,3 +106,8 @@ jobs:
             sleep 5
           done
           echo "API did not become ready" && exit 1
+      - name: Close SSH window
+        if: always() && steps.sshwin.outputs.ip != ''
+        run: |
+          aws ec2 revoke-security-group-ingress --group-id "${{ vars.EC2_SECURITY_GROUP_ID }}" \
+            --protocol tcp --port 22 --cidr "${{ steps.sshwin.outputs.ip }}/32"
