@@ -46,3 +46,66 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   if (!res.ok) throw new Error(`${init?.method ?? "GET"} ${path} failed: ${res.status}`);
   return res.status === 204 ? (undefined as T) : ((await res.json()) as T);
 }
+
+export const EVENT_KEYS = [
+  "issues.opened",
+  "issues.reopened",
+  "issues.edited",
+  "pull_request.opened",
+  "pull_request.reopened",
+  "pull_request.synchronize",
+  "push",
+] as const;
+export type EventKey = (typeof EVENT_KEYS)[number];
+
+export interface Conditions {
+  titleContains: string[];
+  bodyContains: string[];
+  authors: string[];
+  labels: string[];
+  branches: string[];
+}
+
+export type RuleAction =
+  | { type: "add_label"; label: string }
+  | { type: "comment"; body: string }
+  | { type: "slack"; targetId?: string };
+
+export interface RuleInput {
+  name: string;
+  repositoryId: string | null;
+  enabled: boolean;
+  events: EventKey[];
+  conditions: Conditions;
+  actions: RuleAction[];
+}
+
+export interface Rule extends RuleInput {
+  id: string;
+  createdAt: string;
+  repository: { fullName: string } | null;
+}
+
+export interface SlackTarget {
+  id: string;
+  name: string;
+  hint: string;
+  createdAt: string;
+}
+
+/** Surfaces the API's field-level validation messages. */
+export async function apiJson<T>(path: string, method: string, body?: unknown): Promise<T> {
+  const res = await fetch(`/api${path}`, {
+    method,
+    credentials: "same-origin",
+    headers: body === undefined ? undefined : { "content-type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  if (res.status === 401) throw new UnauthorizedError();
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { message?: unknown; issues?: { path: string; message: string }[] };
+    const detail = data.issues?.map((i) => `${i.path || "input"}: ${i.message}`).join("; ");
+    throw new Error(detail || (typeof data.message === "string" ? data.message : `Request failed (${res.status})`));
+  }
+  return res.status === 204 ? (undefined as T) : ((await res.json()) as T);
+}

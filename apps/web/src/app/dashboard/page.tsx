@@ -1,9 +1,8 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-import { useRouter } from "next/navigation";
-import { useEffect } from "react";
-import { api, Delivery, Me, UnauthorizedError } from "@/lib/api";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+import { ActionRun, api, apiJson, Delivery, Me, UnauthorizedError } from "@/lib/api";
 
 const STATUS_STYLES: Record<Delivery["status"], string> = {
   RECEIVED: "bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300",
@@ -14,43 +13,24 @@ const STATUS_STYLES: Record<Delivery["status"], string> = {
   IGNORED: "bg-neutral-100 text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400",
 };
 
-export default function DashboardPage() {
-  const router = useRouter();
+const ACTION_LABELS: Record<ActionRun["type"], string> = {
+  ADD_LABEL: "Label",
+  COMMENT: "Comment",
+  SLACK: "Slack",
+  AI_TRIAGE: "AI triage",
+};
+
+export default function ActivityPage() {
+  const [filter, setFilter] = useState<"all" | "FAILED">("all");
   const me = useQuery({ queryKey: ["me"], queryFn: () => api<Me>("/me") });
   const deliveries = useQuery({
-    queryKey: ["deliveries"],
-    queryFn: () => api<Delivery[]>("/deliveries"),
+    queryKey: ["deliveries", filter],
+    queryFn: () => api<Delivery[]>(filter === "all" ? "/deliveries" : `/deliveries?status=${filter}`),
     refetchInterval: 3000, // live log
   });
 
-  const unauthorized = me.error instanceof UnauthorizedError || deliveries.error instanceof UnauthorizedError;
-  useEffect(() => {
-    if (unauthorized) router.replace("/");
-  }, [unauthorized, router]);
-
-  async function logout() {
-    await api("/auth/logout", { method: "POST" });
-    router.replace("/");
-  }
-
   return (
-    <main className="mx-auto w-full max-w-5xl flex-1 space-y-8 p-6">
-      <header className="flex items-center justify-between gap-4">
-        <h1 className="text-xl font-semibold">GitHub Automation Bot</h1>
-        {me.data && (
-          <div className="flex items-center gap-3 text-sm">
-            {me.data.user.avatarUrl && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={me.data.user.avatarUrl} alt="" className="h-7 w-7 rounded-full" />
-            )}
-            <span>{me.data.user.login}</span>
-            <button onClick={logout} className="text-neutral-500 underline-offset-2 hover:underline">
-              Sign out
-            </button>
-          </div>
-        )}
-      </header>
-
+    <main className="space-y-8">
       <section className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="font-medium">Connected repositories</h2>
@@ -77,11 +57,24 @@ export default function DashboardPage() {
       </section>
 
       <section className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="font-medium">Activity</h2>
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <h2 className="font-medium">Activity</h2>
+            <div className="flex rounded-md border border-neutral-200 text-xs dark:border-neutral-800">
+              {(["all", "FAILED"] as const).map((f) => (
+                <button
+                  key={f}
+                  onClick={() => setFilter(f)}
+                  className={`px-2.5 py-1 ${filter === f ? "bg-neutral-100 font-medium dark:bg-neutral-800" : "text-neutral-500"}`}
+                >
+                  {f === "all" ? "All" : "Failed"}
+                </button>
+              ))}
+            </div>
+          </div>
           <span className="text-xs text-neutral-500">{deliveries.isFetching ? "refreshing…" : "live · every 3s"}</span>
         </div>
-        {deliveries.error && !unauthorized && (
+        {deliveries.error && !(deliveries.error instanceof UnauthorizedError) && (
           <p role="alert" className="text-sm text-red-600">Could not load activity. Retrying…</p>
         )}
         <div className="overflow-x-auto rounded-md border border-neutral-200 dark:border-neutral-800">
@@ -101,7 +94,11 @@ export default function DashboardPage() {
               ) : (
                 <tr>
                   <td colSpan={5} className="px-3 py-6 text-center text-neutral-500">
-                    {deliveries.isLoading ? "Loading…" : "No events yet. Open an issue on a connected repository."}
+                    {deliveries.isLoading
+                      ? "Loading…"
+                      : filter === "FAILED"
+                        ? "No failed deliveries."
+                        : "No events yet. Open an issue on a connected repository."}
                   </td>
                 </tr>
               )}
@@ -114,6 +111,12 @@ export default function DashboardPage() {
 }
 
 function DeliveryRow({ d }: { d: Delivery }) {
+  const qc = useQueryClient();
+  const retry = useMutation({
+    mutationFn: () => apiJson(`/deliveries/${d.id}/retry`, "POST"),
+    onSettled: () => qc.invalidateQueries({ queryKey: ["deliveries"] }),
+  });
+
   return (
     <tr className="align-top">
       <td className="whitespace-nowrap px-3 py-2 text-neutral-500">{new Date(d.receivedAt).toLocaleString()}</td>
@@ -122,7 +125,10 @@ function DeliveryRow({ d }: { d: Delivery }) {
         {d.action ? `.${d.action}` : ""}
       </td>
       <td className="px-3 py-2">
-        <div className="text-xs text-neutral-500">{d.repository}</div>
+        <div className="text-xs text-neutral-500">
+          {d.repository}
+          {d.sender ? ` · ${d.sender}` : ""}
+        </div>
         {d.summary.url ? (
           <a href={d.summary.url} target="_blank" rel="noreferrer" className="hover:underline">
             {d.summary.number ? `#${d.summary.number} ` : ""}
@@ -136,15 +142,22 @@ function DeliveryRow({ d }: { d: Delivery }) {
       <td className="px-3 py-2">
         <span className={`rounded px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[d.status]}`}>{d.status}</span>
         {d.attempts > 1 && <div className="mt-1 text-xs text-neutral-500">{d.attempts} attempts</div>}
+        {d.status === "FAILED" && (
+          <button
+            onClick={() => retry.mutate()}
+            disabled={retry.isPending}
+            className="mt-1 block text-xs font-medium text-blue-600 hover:underline disabled:opacity-50"
+          >
+            {retry.isPending ? "Queuing…" : "Retry"}
+          </button>
+        )}
+        {retry.error && <div className="mt-1 text-xs text-red-600">{(retry.error as Error).message}</div>}
       </td>
       <td className="px-3 py-2 text-xs">
         {d.actions.length ? (
           <ul className="space-y-1">
             {d.actions.map((a) => (
-              <li key={a.id}>
-                {a.type} · <span className={a.status === "FAILED" ? "text-red-600" : ""}>{a.status}</span>
-                {a.lastError && <div className="text-red-600">{a.lastError}</div>}
-              </li>
+              <ActionItem key={a.id} a={a} />
             ))}
           </ul>
         ) : (
@@ -152,5 +165,31 @@ function DeliveryRow({ d }: { d: Delivery }) {
         )}
       </td>
     </tr>
+  );
+}
+
+function ActionItem({ a }: { a: ActionRun }) {
+  const result = (a.result ?? {}) as { url?: string; label?: string; target?: string; reason?: string };
+  const retrying = a.status === "PENDING" && a.lastError;
+  const tone =
+    a.status === "SUCCEEDED" ? "text-green-700 dark:text-green-400" : a.status === "FAILED" ? "text-red-600" : "text-neutral-500";
+
+  return (
+    <li>
+      <span className="font-medium">{ACTION_LABELS[a.type]}</span>{" "}
+      <span className={tone}>{retrying ? `retrying (attempt ${a.attempts})` : a.status.toLowerCase()}</span>
+      {result.label && <span className="text-neutral-500"> · {result.label}</span>}
+      {result.target && <span className="text-neutral-500"> · {result.target}</span>}
+      {result.url && (
+        <>
+          {" · "}
+          <a href={result.url} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">
+            view
+          </a>
+        </>
+      )}
+      {result.reason && <div className="text-neutral-500">{result.reason}</div>}
+      {a.lastError && <div className="text-red-600">{a.lastError}</div>}
+    </li>
   );
 }
