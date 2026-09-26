@@ -13,6 +13,14 @@ acts on GitHub (label/comment) + Slack, optional Groq AI triage. Dashboard shows
   - Prisma 7 with `@prisma/adapter-pg`; client generated to `src/generated/prisma` (CJS, gitignored).
 - `infra/` — compose file, Caddyfile.
 
+## Deployment facts
+- API host: `https://gh-automation-bot.publicvm.com` → EC2 Elastic IP `32.194.194.95` (Ubuntu 26.04,
+  t3.micro-class: 1 vCPU / 1 GB RAM + 2 GB swap). SSH: `ssh -i ~/.ssh/gh-automation-bot.pem ubuntu@32.194.194.95`.
+  App dir on the box: `/opt/gh-bot` (compose file + `.env`, chmod 600). Build images in CI, not on the box.
+- TLS: Caddy + Let's Encrypt. (The `ec2-*.compute-1.amazonaws.com` name can't get a cert — LE policy rejects it.)
+- SQS (us-east-1): `gh-automation-queue` → redrive to `gh-automation-dlq` after 5 receives (DLQ keeps 14 days).
+  Worker sets VisibilityTimeout=60 and WaitTimeSeconds=20 on ReceiveMessage.
+
 ## Commands (run from the app folder)
 - api: `pnpm dev` (tsc watch + api + worker), `pnpm test` (vitest), `pnpm typecheck`,
   `pnpm prisma:migrate`, `pnpm build`
