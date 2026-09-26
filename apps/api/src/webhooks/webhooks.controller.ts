@@ -10,7 +10,7 @@ import {
 } from '@nestjs/common';
 import type { RawBodyRequest } from '@nestjs/common';
 import type { Request } from 'express';
-import { AppConfig } from '../config/config.module';
+import { AppConfig } from '../config/app-config';
 import { verifyGithubSignature } from './signature';
 import { WebhookIntakeService } from './webhook-intake.service';
 

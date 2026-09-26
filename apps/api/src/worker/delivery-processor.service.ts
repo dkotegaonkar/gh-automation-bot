@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ActionRunnerService, MatchedRule } from '../actions/action-runner.service';
-import { AppConfig } from '../config/config.module';
+import { AppConfig } from '../config/app-config';
 import { Delivery, DeliveryStatus } from '../generated/prisma/client';
 import { InstallationSyncService } from '../github/installation-sync.service';
 import { PrismaService } from '../prisma/prisma.service';

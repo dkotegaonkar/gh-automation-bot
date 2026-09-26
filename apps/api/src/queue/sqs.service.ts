@@ -7,7 +7,7 @@ import {
   SQSClient,
 } from '@aws-sdk/client-sqs';
 import { Global, Injectable, Module } from '@nestjs/common';
-import { AppConfig } from '../config/config.module';
+import { AppConfig } from '../config/app-config';
 
 export interface DeliveryMessage {
   deliveryId: string;

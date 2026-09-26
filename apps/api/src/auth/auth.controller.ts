@@ -1,7 +1,7 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { Controller, Get, HttpCode, Logger, Post, Query, Req, Res } from '@nestjs/common';
 import type { Request, Response } from 'express';
-import { AppConfig } from '../config/config.module';
+import { AppConfig } from '../config/app-config';
 import { GithubAppService, GithubUser } from '../github/github-app.service';
 import { InstallationSyncService } from '../github/installation-sync.service';
 import { PrismaService } from '../prisma/prisma.service';

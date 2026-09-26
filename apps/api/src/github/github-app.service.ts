@@ -1,7 +1,7 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { createAppAuth } from '@octokit/auth-app';
 import { Octokit } from '@octokit/rest';
-import { AppConfig } from '../config/config.module';
+import { AppConfig } from '../config/app-config';
 
 export interface GithubUser {
   id: number;

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Module } from '@nestjs/common';
 import { LoggerModule } from 'nestjs-pino';
-import { AppConfig } from '../config/config.module';
+import { AppConfig } from '../config/app-config';
 import { redactQuery } from './redact';
 
 /** Paths scrubbed from every log line. Anything token/secret-shaped must be listed here. */

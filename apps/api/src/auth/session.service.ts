@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { CookieOptions } from 'express';
 import { jwtVerify, SignJWT } from 'jose';
-import { AppConfig } from '../config/config.module';
+import { AppConfig } from '../config/app-config';
 
 export const SESSION_COOKIE = 'ghbot_session';
 export const OAUTH_STATE_COOKIE = 'ghbot_oauth_state';

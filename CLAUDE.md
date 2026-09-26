@@ -36,6 +36,10 @@ acts on GitHub (label/comment) + Slack, optional Groq AI triage. Dashboard shows
   `ERR_REQUIRE_CYCLE_MODULE` (its angular-devkit dep `require()`s ESM-only `ora`). We build with plain `tsc`.
 - Tests use vitest + unplugin-swc (SWC emits decorator metadata; esbuild does not). Not jest.
 - Nest 12 packages are ESM; our app compiles to CJS and relies on Node 22's `require(esm)`.
+- Services import `AppConfig` from `config/app-config.ts`, never from `config/config.module.ts`: importing
+  the module file runs `ConfigModule.forRoot()` (env validation) at import time and breaks unit tests in CI.
+  `ignoreEnvFile: true` is deliberate so local runs never silently pick up `./.env`. Before pushing,
+  run tests with `.env` moved aside if in doubt.
 
 ## Non-negotiable invariants (this is what the project is graded on)
 1. **Verify before trust**: webhook HMAC (`X-Hub-Signature-256`) is checked against `req.rawBody`

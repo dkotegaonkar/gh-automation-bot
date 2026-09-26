@@ -1,6 +1,6 @@
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import { Global, Injectable, Module } from '@nestjs/common';
-import { AppConfig } from '../config/config.module';
+import { AppConfig } from '../config/app-config';
 
 const VERSION = 'v1';
 
