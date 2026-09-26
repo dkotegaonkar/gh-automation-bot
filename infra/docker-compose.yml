@@ -1,0 +1,33 @@
+# Runs on the EC2 instance. Secrets come from /opt/gh-bot/.env (root-owned, chmod 600), never from the repo.
+# AWS credentials come from the instance's IAM role — no keys in .env.
+services:
+  api:
+    image: ghcr.io/${GHCR_OWNER}/gh-automation-bot-api:${IMAGE_TAG:-latest}
+    env_file: /opt/gh-bot/.env
+    restart: unless-stopped
+    expose: ["4000"]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:4000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  worker:
+    image: ghcr.io/${GHCR_OWNER}/gh-automation-bot-api:${IMAGE_TAG:-latest}
+    env_file: /opt/gh-bot/.env
+    command: ["node", "dist/main.worker.js"]
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    environment:
+      API_DOMAIN: ${API_DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+    depends_on: [api]
+
+volumes:
+  caddy_data:

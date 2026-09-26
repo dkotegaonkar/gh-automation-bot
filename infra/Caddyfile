@@ -1,0 +1,6 @@
+# Automatic HTTPS via Let's Encrypt for the API domain (e.g. gh-bot.duckdns.org).
+{$API_DOMAIN} {
+	encode gzip
+	reverse_proxy api:4000
+	header -Server
+}

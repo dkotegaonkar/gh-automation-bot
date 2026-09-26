@@ -1,0 +1,151 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id           String         @id @default(cuid())
+  githubId     BigInt         @unique
+  login        String
+  avatarUrl    String?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  installations Installation[]
+  rules        Rule[]
+  slackTargets SlackTarget[]
+}
+
+/// A GitHub App installation on a user or org account.
+model Installation {
+  id                   String       @id @default(cuid())
+  githubInstallationId BigInt       @unique
+  accountLogin         String
+  accountType          String
+  userId               String?
+  user                 User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  suspendedAt          DateTime?
+  deletedAt            DateTime?
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+  repositories         Repository[]
+}
+
+model Repository {
+  id             String       @id @default(cuid())
+  githubRepoId   BigInt       @unique
+  fullName       String
+  private        Boolean
+  enabled        Boolean      @default(true)
+  installationId String
+  installation   Installation @relation(fields: [installationId], references: [id], onDelete: Cascade)
+  removedAt      DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  deliveries     Delivery[]
+  rules          Rule[]
+
+  @@index([installationId])
+}
+
+enum DeliveryStatus {
+  RECEIVED // persisted, not yet confirmed on SQS (outbox sweeper picks these up)
+  QUEUED
+  PROCESSING
+  PROCESSED
+  FAILED
+  IGNORED // valid but nothing to do (unknown repo, bot's own event, ...)
+}
+
+/// One GitHub webhook delivery. githubDeliveryId (X-GitHub-Delivery) is the dedupe key.
+model Delivery {
+  id                   String         @id @default(cuid())
+  githubDeliveryId     String         @unique
+  event                String
+  action               String?
+  githubInstallationId BigInt?
+  repositoryId         String?
+  repository           Repository?    @relation(fields: [repositoryId], references: [id], onDelete: SetNull)
+  senderLogin          String?
+  payload              Json
+  status               DeliveryStatus @default(RECEIVED)
+  attempts             Int            @default(0)
+  lastError            String?
+  receivedAt           DateTime       @default(now())
+  processedAt          DateTime?
+  actionRuns           ActionRun[]
+
+  @@index([repositoryId, receivedAt(sort: Desc)])
+  @@index([status, receivedAt])
+}
+
+/// events: e.g. ["issues.opened", "pull_request.opened"]; conditions/actions validated by zod.
+model Rule {
+  id           String      @id @default(cuid())
+  userId       String
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  repositoryId String? // null = all of the user's repositories
+  repository   Repository? @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  name         String
+  enabled      Boolean     @default(true)
+  events       String[]
+  conditions   Json
+  actions      Json
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  actionRuns   ActionRun[]
+
+  @@index([userId])
+}
+
+enum ActionType {
+  ADD_LABEL
+  COMMENT
+  SLACK
+  AI_TRIAGE
+}
+
+enum ActionStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  SKIPPED
+}
+
+/// One side effect the bot performed (or tried to). idempotencyKey makes retries safe.
+model ActionRun {
+  id             String       @id @default(cuid())
+  deliveryId     String
+  delivery       Delivery     @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+  ruleId         String?
+  rule           Rule?        @relation(fields: [ruleId], references: [id], onDelete: SetNull)
+  type           ActionType
+  idempotencyKey String       @unique
+  status         ActionStatus @default(PENDING)
+  attempts       Int          @default(0)
+  params         Json?
+  result         Json?
+  lastError      String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  completedAt    DateTime?
+
+  @@index([deliveryId])
+  @@index([status, updatedAt])
+}
+
+model SlackTarget {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name            String
+  /// AES-256-GCM encrypted incoming-webhook URL (the URL itself is a secret).
+  webhookUrlEnc   String
+  createdAt       DateTime @default(now())
+
+  @@index([userId])
+}
