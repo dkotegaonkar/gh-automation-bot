@@ -1,4 +1,4 @@
-import { redactQuery } from './logger.module';
+import { redactQuery } from './redact';
 
 describe('redactQuery', () => {
   it('removes OAuth code and state from logged URLs', () => {

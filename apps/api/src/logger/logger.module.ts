@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { Module } from '@nestjs/common';
 import { LoggerModule } from 'nestjs-pino';
 import { AppConfig } from '../config/config.module';
+import { redactQuery } from './redact';
 
 /** Paths scrubbed from every log line. Anything token/secret-shaped must be listed here. */
 export const REDACT_PATHS = [
@@ -42,7 +43,3 @@ export const REDACT_PATHS = [
   ],
 })
 export class AppLoggerModule {}
-
-export function redactQuery(url: string | undefined): string | undefined {
-  return url?.replace(/([?&](?:code|state)=)[^&]*/g, '$1[redacted]');
-}
