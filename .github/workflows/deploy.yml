@@ -94,10 +94,13 @@ jobs:
           # Short-lived token for this pull only; logged out immediately after.
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
           export GHCR_OWNER=${{ github.repository_owner }} IMAGE_TAG=${{ github.sha }} API_DOMAIN=${{ vars.API_DOMAIN }}
+          # Small disk: drop images no container uses (old SHA-tagged releases) before and after pulling.
+          docker image prune -af
+          df -h / | tail -1
           docker compose pull
           docker compose up -d --remove-orphans
           docker logout ghcr.io
-          docker image prune -f
+          docker image prune -af
           EOSSH
       - name: Smoke test
         run: |
