@@ -10,6 +10,7 @@ async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true, bufferLogs: true });
   app.useLogger(app.get(Logger));
   app.set('trust proxy', 1); // behind Caddy
+  app.useBodyParser('json', { limit: '5mb' }); // push payloads can exceed the 100kb default
   app.use(cookieParser());
   app.setGlobalPrefix('api');
   app.enableShutdownHooks();

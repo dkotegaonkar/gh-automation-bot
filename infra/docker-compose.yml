@@ -2,7 +2,7 @@
 # AWS credentials come from the instance's IAM role — no keys in .env.
 services:
   api:
-    image: ghcr.io/${GHCR_OWNER}/gh-automation-bot-api:${IMAGE_TAG:-latest}
+    image: ghcr.io/${GHCR_OWNER:-dkotegaonkar}/gh-automation-bot-api:${IMAGE_TAG:-latest}
     env_file: /opt/gh-bot/.env
     restart: unless-stopped
     expose: ["4000"]
@@ -13,7 +13,7 @@ services:
       retries: 3
 
   worker:
-    image: ghcr.io/${GHCR_OWNER}/gh-automation-bot-api:${IMAGE_TAG:-latest}
+    image: ghcr.io/${GHCR_OWNER:-dkotegaonkar}/gh-automation-bot-api:${IMAGE_TAG:-latest}
     env_file: /opt/gh-bot/.env
     command: ["node", "dist/main.worker.js"]
     restart: unless-stopped
@@ -23,7 +23,7 @@ services:
     restart: unless-stopped
     ports: ["80:80", "443:443"]
     environment:
-      API_DOMAIN: ${API_DOMAIN}
+      API_DOMAIN: ${API_DOMAIN:-gh-automation-bot.publicvm.com}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data

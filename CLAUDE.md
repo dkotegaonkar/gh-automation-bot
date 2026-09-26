@@ -17,6 +17,11 @@ acts on GitHub (label/comment) + Slack, optional Groq AI triage. Dashboard shows
 - API host: `https://gh-automation-bot.publicvm.com` → EC2 Elastic IP `32.194.194.95` (Ubuntu 26.04,
   t3.micro-class: 1 vCPU / 1 GB RAM + 2 GB swap). SSH: `ssh -i ~/.ssh/gh-automation-bot.pem ubuntu@32.194.194.95`.
   App dir on the box: `/opt/gh-bot` (compose file + `.env`, chmod 600). Build images in CI, not on the box.
+- Web: `https://gh-automation-bot-web.vercel.app` (Vercel, root dir `apps/web`, env `API_URL`).
+  GitHub App `gh-automation-bot-dk` (ID 5087615): OAuth callback on the web origin, webhook straight to the API host.
+- Deploy: push to `main` touching `apps/api/**` or `infra/**` → `.github/workflows/deploy.yml`: test → build image
+  to GHCR + `prisma migrate deploy` (CI, uses `DIRECT_DATABASE_URL` secret) → SSH, `docker compose pull && up -d` →
+  smoke test `/api/health/ready`. The prod `.env` lives only on the box and is never touched by CI.
 - TLS: Caddy + Let's Encrypt. (The `ec2-*.compute-1.amazonaws.com` name can't get a cert — LE policy rejects it.)
 - SQS (us-east-1): `gh-automation-queue` → redrive to `gh-automation-dlq` after 5 receives (DLQ keeps 14 days).
   Worker sets VisibilityTimeout=60 and WaitTimeSeconds=20 on ReceiveMessage.

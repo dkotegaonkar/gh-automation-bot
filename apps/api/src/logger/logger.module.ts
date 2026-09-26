@@ -28,6 +28,10 @@ export const REDACT_PATHS = [
           // Correlate logs with GitHub's delivery id when there is one.
           genReqId: (req) => (req.headers['x-github-delivery'] as string | undefined) ?? randomUUID(),
           autoLogging: { ignore: (req) => req.url === '/api/health' },
+          serializers: {
+            // OAuth callback URLs carry a one-time ?code= and ?state= — keep them out of logs.
+            req: (req: { url?: string }) => ({ ...req, url: redactQuery(req.url) }),
+          },
           transport:
             config.get('NODE_ENV') === 'development'
               ? { target: 'pino-pretty', options: { singleLine: true } }
@@ -38,3 +42,7 @@ export const REDACT_PATHS = [
   ],
 })
 export class AppLoggerModule {}
+
+export function redactQuery(url: string | undefined): string | undefined {
+  return url?.replace(/([?&](?:code|state)=)[^&]*/g, '$1[redacted]');
+}
