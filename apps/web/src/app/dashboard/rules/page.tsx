@@ -95,7 +95,9 @@ export default function RulesPage() {
                           ? `add label “${a.label}”`
                           : a.type === "comment"
                             ? "post a comment"
-                            : `Slack alert to ${targetName(a.targetId)}`,
+                            : a.type === "ai_triage"
+                              ? `AI triage${a.applyLabels ? " (+ apply labels)" : ""}`
+                              : `Slack alert to ${targetName(a.targetId)}`,
                       )
                       .join(", ")}
                   </div>

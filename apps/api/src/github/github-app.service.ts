@@ -18,9 +18,11 @@ export interface GithubUser {
 export class GithubAppService {
   private readonly installationClients = new Map<number, Octokit>();
   private readonly privateKey: string;
+  private readonly appAuth: ReturnType<typeof createAppAuth>;
 
   constructor(private readonly config: AppConfig) {
     this.privateKey = Buffer.from(config.get('GITHUB_APP_PRIVATE_KEY_B64'), 'base64').toString('utf8');
+    this.appAuth = createAppAuth({ appId: config.get('GITHUB_APP_ID'), privateKey: this.privateKey });
   }
 
   /** Octokit authenticated as the app installation (acts as `<slug>[bot]`). */
@@ -34,6 +36,19 @@ export class GithubAppService {
       this.installationClients.set(installationId, client);
     }
     return client;
+  }
+
+  /**
+   * Raw request authenticated as the app itself (JWT), e.g. /app/hook/deliveries.
+   * Returns the unparsed Response so callers can parse large integer ids safely.
+   */
+  async appRequest(method: 'GET' | 'POST', path: string): Promise<Response> {
+    const { token } = await this.appAuth({ type: 'app' });
+    return fetch(`https://api.github.com${path}`, {
+      method,
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' },
+      signal: AbortSignal.timeout(15_000),
+    });
   }
 
   forUser(userToken: string): Octokit {

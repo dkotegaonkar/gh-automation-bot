@@ -46,9 +46,6 @@ importers:
       dotenv:
         specifier: ^18.0.4
         version: 18.0.4
-      groq-sdk:
-        specifier: ^1.6.0
-        version: 1.6.0
       jose:
         specifier: ^6.2.12
         version: 6.2.12
@@ -2404,10 +2401,6 @@ packages:
 
   graphmatch@1.1.1:
     resolution: {integrity: sha512-5ykVn/EXM1hF0XCaWh05VbYvEiOL2lY1kBxZtaYsyvjp7cmWOU1XsAdfQBwClraEofXDT197lFbXOEVMHpvQOg==}
-
-  groq-sdk@1.6.0:
-    resolution: {integrity: sha512-ggMgo6n84aZdNObgkSbSxWrdAq4wABsViIRb5e4N15bMUtDLZVhqlgZOI7X4TeqdBMdaVUOuUdZxAZIp06u0vw==}
-    hasBin: true
 
   has-bigints@1.1.0:
     resolution: {integrity: sha512-R3pbpkcIqv2Pm3dUwgjclDRVmWpTJW2DcMzcIhEXEx1oh/CEMObMm3KLmRJOdvhM7o4uQBnwr8pzRK2sJWIqfg==}
@@ -6375,8 +6368,6 @@ snapshots:
   grammex@3.1.13: {}
 
   graphmatch@1.1.1: {}
-
-  groq-sdk@1.6.0: {}
 
   has-bigints@1.1.0: {}
 

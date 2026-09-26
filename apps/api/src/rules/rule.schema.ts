@@ -29,6 +29,7 @@ export const actionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('add_label'), label: z.string().trim().min(1).max(50) }).strict(),
   z.object({ type: z.literal('comment'), body: z.string().trim().min(1).max(2000) }).strict(),
   z.object({ type: z.literal('slack'), targetId: z.string().min(1).optional() }).strict(),
+  z.object({ type: z.literal('ai_triage'), applyLabels: z.boolean().default(false) }).strict(),
 ]);
 
 export const ruleInputSchema = z

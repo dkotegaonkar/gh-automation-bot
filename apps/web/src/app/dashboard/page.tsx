@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { ActionRun, api, apiJson, Delivery, Me, UnauthorizedError } from "@/lib/api";
+import { ActionRun, api, apiJson, Delivery, Me, TriageResult, UnauthorizedError } from "@/lib/api";
 
 const STATUS_STYLES: Record<Delivery["status"], string> = {
   RECEIVED: "bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300",
@@ -168,7 +168,30 @@ function DeliveryRow({ d }: { d: Delivery }) {
   );
 }
 
+const PRIORITY_STYLES: Record<TriageResult["priority"], string> = {
+  P0: "bg-red-600 text-white",
+  P1: "bg-orange-500 text-white",
+  P2: "bg-amber-200 text-amber-900",
+  P3: "bg-neutral-200 text-neutral-700",
+};
+
 function ActionItem({ a }: { a: ActionRun }) {
+  if (a.type === "AI_TRIAGE" && a.status === "SUCCEEDED") {
+    const t = a.result as TriageResult;
+    return (
+      <li className="space-y-0.5">
+        <span className="font-medium">AI triage</span>{" "}
+        <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${PRIORITY_STYLES[t.priority]}`}>{t.priority}</span>
+        {t.suggestedLabels.length > 0 && (
+          <span className="text-neutral-500">
+            {" "}
+            · {t.appliedLabels?.length ? "applied" : "suggests"} {t.suggestedLabels.join(", ")}
+          </span>
+        )}
+        <div className="max-w-xs text-neutral-600 dark:text-neutral-400">{t.summary}</div>
+      </li>
+    );
+  }
   const result = (a.result ?? {}) as { url?: string; label?: string; target?: string; reason?: string };
   const retrying = a.status === "PENDING" && a.lastError;
   const tone =

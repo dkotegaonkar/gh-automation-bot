@@ -53,6 +53,7 @@ export function RuleForm({ initial, repositories, slackTargets, saving, error, o
     value: find("comment")?.body ?? "Thanks {{author}}! The bot has triaged this.",
   });
   const [slack, setSlack] = useState({ on: !!find("slack"), targetId: find("slack")?.targetId ?? "" });
+  const [ai, setAi] = useState({ on: !!find("ai_triage"), applyLabels: find("ai_triage")?.applyLabels ?? false });
   const [localError, setLocalError] = useState<string | null>(null);
 
   function toggleEvent(e: EventKey) {
@@ -62,6 +63,7 @@ export function RuleForm({ initial, repositories, slackTargets, saving, error, o
   function submit(e: FormEvent) {
     e.preventDefault();
     const actions: RuleAction[] = [];
+    if (ai.on) actions.push({ type: "ai_triage", applyLabels: ai.applyLabels });
     if (label.on) actions.push({ type: "add_label", label: label.value.trim() });
     if (comment.on) actions.push({ type: "comment", body: comment.value.trim() });
     if (slack.on) actions.push(slack.targetId ? { type: "slack", targetId: slack.targetId } : { type: "slack" });
@@ -194,8 +196,25 @@ export function RuleForm({ initial, repositories, slackTargets, saving, error, o
             <span className="text-xs text-neutral-500">Add a Slack destination under Settings first.</span>
           )}
         </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="flex w-40 items-center gap-1.5">
+            <input type="checkbox" checked={ai.on} onChange={(e) => setAi({ ...ai, on: e.target.checked })} />
+            AI triage
+          </label>
+          <label className={`flex items-center gap-1.5 text-xs ${ai.on ? "" : "opacity-50"}`}>
+            <input
+              type="checkbox"
+              checked={ai.applyLabels}
+              disabled={!ai.on}
+              onChange={(e) => setAi({ ...ai, applyLabels: e.target.checked })}
+            />
+            also apply suggested labels (from a fixed allowlist)
+          </label>
+        </div>
         <p className="text-xs text-neutral-500">
-          <code>{"{{author}}"}</code> in a comment is replaced with an @mention of the issue or PR author.
+          AI triage (Groq) summarizes the item and suggests a priority and labels; it runs first, and its result is added to the
+          Slack alert. In comments, <code>{"{{author}}"}</code> becomes an @mention, and <code>{"{{ai_summary}}"}</code> /{" "}
+          <code>{"{{ai_priority}}"}</code> insert the AI result.
         </p>
       </fieldset>
 

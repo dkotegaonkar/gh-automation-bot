@@ -69,7 +69,17 @@ export interface Conditions {
 export type RuleAction =
   | { type: "add_label"; label: string }
   | { type: "comment"; body: string }
-  | { type: "slack"; targetId?: string };
+  | { type: "slack"; targetId?: string }
+  | { type: "ai_triage"; applyLabels: boolean };
+
+export interface TriageResult {
+  summary: string;
+  priority: "P0" | "P1" | "P2" | "P3";
+  suggestedLabels: string[];
+  appliedLabels?: string[];
+  reasoning?: string;
+  model?: string;
+}
 
 export interface RuleInput {
   name: string;

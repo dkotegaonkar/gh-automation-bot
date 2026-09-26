@@ -1,4 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { GroqService } from '../ai/groq.service';
+import type { Triage } from '../ai/triage';
 import { SecretBox } from '../common/secret-box';
 import { ActionStatus, ActionType, Prisma } from '../generated/prisma/client';
 import { GithubAppService } from '../github/github-app.service';
@@ -26,6 +28,7 @@ const TYPE: Record<RuleAction['type'], ActionType> = {
   add_label: ActionType.ADD_LABEL,
   comment: ActionType.COMMENT,
   slack: ActionType.SLACK,
+  ai_triage: ActionType.AI_TRIAGE,
 };
 
 export const commentMarker = (idempotencyKey: string) => `<!-- ghbot:${idempotencyKey} -->`;
@@ -43,43 +46,48 @@ export class ActionRunnerService {
     private readonly prisma: PrismaService,
     private readonly github: GithubAppService,
     private readonly secrets: SecretBox,
+    private readonly groq: GroqService,
   ) {}
 
   async runAll(deliveryId: string, repo: RepoRef, ctx: EventContext, rules: MatchedRule[], lastAttempt: boolean) {
     const failures: string[] = [];
 
-    for (const rule of rules) {
-      for (const [index, action] of rule.actions.entries()) {
-        const idempotencyKey = `${deliveryId}:${rule.id}:${index}`;
-        const run = await this.prisma.actionRun.upsert({
-          where: { idempotencyKey },
-          create: { deliveryId, ruleId: rule.id, type: TYPE[action.type], idempotencyKey, params: action },
-          update: {},
-        });
-        if (run.status === ActionStatus.SUCCEEDED || run.status === ActionStatus.SKIPPED) continue;
+    // AI triage runs first so later comments and Slack alerts can include its result.
+    // The key keeps the action's original index, so reordering never changes identity.
+    const jobs = rules
+      .flatMap((rule) => rule.actions.map((action, index) => ({ rule, action, index })))
+      .sort((a, b) => Number(b.action.type === 'ai_triage') - Number(a.action.type === 'ai_triage'));
 
-        try {
-          const outcome = await this.execute(action, { repo, ctx, rule, idempotencyKey, isRetry: run.attempts > 0 });
-          await this.prisma.actionRun.update({
-            where: { id: run.id },
-            data: {
-              status: outcome.status,
-              result: outcome.result,
-              attempts: { increment: 1 },
-              lastError: null,
-              completedAt: new Date(),
-            },
-          });
-        } catch (err) {
-          const message = describeError(err);
-          failures.push(`${action.type}: ${message}`);
-          await this.prisma.actionRun.update({
-            where: { id: run.id },
-            // PENDING + lastError = "will retry"; FAILED only once retries are exhausted.
-            data: { status: lastAttempt ? ActionStatus.FAILED : ActionStatus.PENDING, attempts: { increment: 1 }, lastError: message },
-          });
-          this.logger.warn({ deliveryId, ruleId: rule.id, action: action.type, err: message }, 'action failed');
-        }
+    for (const { rule, action, index } of jobs) {
+      const idempotencyKey = `${deliveryId}:${rule.id}:${index}`;
+      const run = await this.prisma.actionRun.upsert({
+        where: { idempotencyKey },
+        create: { deliveryId, ruleId: rule.id, type: TYPE[action.type], idempotencyKey, params: action },
+        update: {},
+      });
+      if (run.status === ActionStatus.SUCCEEDED || run.status === ActionStatus.SKIPPED) continue;
+
+      try {
+        const outcome = await this.execute(action, { deliveryId, repo, ctx, rule, idempotencyKey, isRetry: run.attempts > 0 });
+        await this.prisma.actionRun.update({
+          where: { id: run.id },
+          data: {
+            status: outcome.status,
+            result: outcome.result,
+            attempts: { increment: 1 },
+            lastError: null,
+            completedAt: new Date(),
+          },
+        });
+      } catch (err) {
+        const message = describeError(err);
+        failures.push(`${action.type}: ${message}`);
+        await this.prisma.actionRun.update({
+          where: { id: run.id },
+          // PENDING + lastError = "will retry"; FAILED only once retries are exhausted.
+          data: { status: lastAttempt ? ActionStatus.FAILED : ActionStatus.PENDING, attempts: { increment: 1 }, lastError: message },
+        });
+        this.logger.warn({ deliveryId, ruleId: rule.id, action: action.type, err: message }, 'action failed');
       }
     }
 
@@ -88,7 +96,7 @@ export class ActionRunnerService {
 
   private async execute(
     action: RuleAction,
-    job: { repo: RepoRef; ctx: EventContext; rule: MatchedRule; idempotencyKey: string; isRetry: boolean },
+    job: { deliveryId: string; repo: RepoRef; ctx: EventContext; rule: MatchedRule; idempotencyKey: string; isRetry: boolean },
   ): Promise<Outcome> {
     const { repo, ctx } = job;
     const [owner, name] = repo.fullName.split('/') as [string, string];
@@ -116,7 +124,12 @@ export class ActionRunnerService {
           const found = existing.find((c) => c.body?.includes(marker));
           if (found) return { status: 'SUCCEEDED', result: { commentId: found.id, url: found.html_url, deduplicated: true } };
         }
-        const body = action.body.replaceAll('{{author}}', `@${ctx.author}`) + `\n\n${marker}`;
+        const triage = await this.triageFor(job.deliveryId);
+        const body =
+          action.body
+            .replaceAll('{{author}}', `@${ctx.author}`)
+            .replaceAll('{{ai_summary}}', triage?.summary ?? '')
+            .replaceAll('{{ai_priority}}', triage?.priority ?? '') + `\n\n${marker}`;
         const { data } = await octokit().rest.issues.createComment({ owner, repo: name, issue_number: ctx.number, body });
         return { status: 'SUCCEEDED', result: { commentId: data.id, url: data.html_url } };
       }
@@ -130,13 +143,33 @@ export class ActionRunnerService {
         const res = await fetch(this.secrets.open(target.webhookUrlEnc), {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(buildSlackMessage(repo.fullName, ctx, job.rule.name)),
+          body: JSON.stringify(buildSlackMessage(repo.fullName, ctx, job.rule.name, await this.triageFor(job.deliveryId))),
           signal: AbortSignal.timeout(10_000),
         });
         if (!res.ok) throw new Error(`Slack responded ${res.status}: ${(await res.text()).slice(0, 200)}`);
         return { status: 'SUCCEEDED', result: { target: target.name } };
       }
+
+      case 'ai_triage': {
+        if (!this.groq.enabled) return { status: 'SKIPPED', result: { reason: 'AI is not configured (GROQ_API_KEY)' } };
+        const triage = await this.groq.triage(repo.fullName, ctx);
+        let appliedLabels: string[] = [];
+        if (action.applyLabels && ctx.number && triage.suggestedLabels.length) {
+          await octokit().rest.issues.addLabels({ owner, repo: name, issue_number: ctx.number, labels: triage.suggestedLabels });
+          appliedLabels = triage.suggestedLabels;
+        }
+        return { status: 'SUCCEEDED', result: { ...triage, appliedLabels, model: this.groq.model } };
+      }
     }
+  }
+
+  /** The AI triage already produced for this delivery (by any rule), if any. */
+  private async triageFor(deliveryId: string): Promise<Triage | null> {
+    const run = await this.prisma.actionRun.findFirst({
+      where: { deliveryId, type: ActionType.AI_TRIAGE, status: ActionStatus.SUCCEEDED },
+      orderBy: { completedAt: 'asc' },
+    });
+    return (run?.result as Triage | undefined) ?? null;
   }
 }
 
