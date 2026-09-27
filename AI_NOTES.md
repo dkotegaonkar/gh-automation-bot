@@ -3,9 +3,7 @@
 ## Tools and how the work was split
 
 - **Claude Code** (Claude Opus 5.5) in VS Code wrote most of the code and ran most commands: scaffolding,
-  builds, tests, local end-to-end checks, CI runs, and SSH to the server.
-- The **AWS Agent Toolkit MCP server** was used for AWS reads and small changes: the DLQ and its redrive
-  policy, checking IAM and security groups, and temporary SSH rules.
+  builds, tests, local end-to-end checks, CI runs, SSH to the server, and small AWS changes and checks.
 - Context files, exactly as used:
   - [`CLAUDE.md`](CLAUDE.md): project invariants, toolchain gotchas, deployment facts. It was updated
     as we learned things.
